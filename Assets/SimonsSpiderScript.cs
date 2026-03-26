@@ -20,6 +20,9 @@ public class SimonsSpiderScript : MonoBehaviour
     public GameObject[] SpiderParts;
     public GameObject[] SilkObjs;
 
+    public Light ArachnophobiaLight;
+    public GameObject ArachnophobiaObj;
+
     private int _moduleId;
     private static int _moduleIdCounter = 1;
     private bool _moduleSolved;
@@ -74,9 +77,9 @@ public class SimonsSpiderScript : MonoBehaviour
     private float _currentAngle;
     private Coroutine _flashSequence;
     private bool _isSpiderFlashing;
-    private List<int> _userInputQueue = new List<int>();
+    private readonly List<int> _userInputQueue = new List<int>();
     private bool _checkingLoop;
-    private List<int> _inputtedLoop = new List<int>();
+    private readonly List<int> _inputtedLoop = new List<int>();
 
     public class Loop
     {
@@ -103,6 +106,48 @@ public class SimonsSpiderScript : MonoBehaviour
         {
             return ShiftToLowest(WebPos).Aggregate(47, (p, n) => p * 31 + n);
         }
+    }
+
+    private SimonsSpiderSettings Settings = new SimonsSpiderSettings();
+
+    private class SimonsSpiderSettings
+    {
+        public bool ArachnophobiaMode = false;
+    }
+    private bool _arachnophobiaMode;
+
+#pragma warning disable 0414
+    private static readonly Dictionary<string, object>[] TweaksEditorSettings = new Dictionary<string, object>[]
+#pragma warning restore 0414
+    {
+        new Dictionary<string, object>
+        {
+            { "Filename", "SimonsSpiderSettings.json" },
+            { "Name", "Simon's Spider Settings" },
+            { "Listings", new List<Dictionary<string, object>>{
+                new Dictionary<string, object>
+                {
+                    { "Key", "arachnophobiaMode" },
+                    { "Text", "Arachnophobia Mode" },
+                    { "Description", "Replace the spider model and sounds." }
+                },
+            } }
+        }
+    };
+
+    private void Awake()
+    {
+        ModConfig<SimonsSpiderSettings> modConfig = new ModConfig<SimonsSpiderSettings>("SimonsSpiderSettings");
+        Settings = modConfig.Settings;
+        modConfig.Settings = Settings;
+
+        _arachnophobiaMode = Settings.ArachnophobiaMode;
+        ArachnophobiaObj.SetActive(_arachnophobiaMode);
+        SpiderObj.SetActive(!_arachnophobiaMode);
+
+        var lightScale = transform.lossyScale.x;
+        SpiderLight.range *= lightScale;
+        ArachnophobiaLight.range *= lightScale;
     }
 
     private void Start()
@@ -258,7 +303,7 @@ public class SimonsSpiderScript : MonoBehaviour
             yield return new WaitForSeconds(0.3f);
             _moduleSolved = true;
             Module.HandlePass();
-            Audio.PlaySoundAtTransform("solve", transform);
+            Audio.PlaySoundAtTransform((!_arachnophobiaMode ? "sp" : "ar") + "solve", transform);
             StartCoroutine(FlashSpiderColor(3, true));
         }
         else
@@ -293,10 +338,12 @@ public class SimonsSpiderScript : MonoBehaviour
         while (elapsed < duration)
         {
             SpiderObj.transform.localRotation = Quaternion.Lerp(Quaternion.Euler(0, _currentAngle, 0), Quaternion.Euler(0, angle, 0), Easing.InOutQuad(elapsed, 0, 1, duration));
+            ArachnophobiaObj.transform.localRotation = Quaternion.Lerp(Quaternion.Euler(0, _currentAngle, 0), Quaternion.Euler(0, angle, 0), Easing.InOutQuad(elapsed, 0, 1, duration));
             yield return null;
             elapsed += Time.deltaTime;
         }
         SpiderObj.transform.localEulerAngles = new Vector3(0, angle, 0);
+        ArachnophobiaObj.transform.localEulerAngles = new Vector3(0, angle, 0);
         yield return new WaitForSeconds(0.3f);
         skipRotate:
         _currentAngle = angle;
@@ -308,16 +355,22 @@ public class SimonsSpiderScript : MonoBehaviour
         var newV = _posOnMod[newPos];
         float elapsed = 0f;
         float duration = Mathf.Sqrt(Mathf.Pow(_posOnMod[oldPos].x - _posOnMod[newPos].x, 2) + Mathf.Pow(_posOnMod[oldPos].z - _posOnMod[newPos].z, 2)) * 6f;
-        PlaySpiderWalkSound();
-        Spider.RunAnimation(0);
+        if (!_arachnophobiaMode)
+        {
+            PlaySpiderWalkSound();
+            Spider.RunAnimation(0);
+        }
         while (elapsed < duration)
         {
             SpiderObj.transform.localPosition = new Vector3(Mathf.Lerp(oldV.x, newV.x, elapsed / duration), SpiderObj.transform.localPosition.y, Mathf.Lerp(oldV.z, newV.z, elapsed / duration));
+            ArachnophobiaObj.transform.localPosition = new Vector3(Mathf.Lerp(oldV.x, newV.x, elapsed / duration), ArachnophobiaObj.transform.localPosition.y, Mathf.Lerp(oldV.z, newV.z, elapsed / duration));
             yield return null;
             elapsed += Time.deltaTime;
         }
         SpiderObj.transform.localPosition = new Vector3(newV.x, SpiderObj.transform.localPosition.y, newV.z);
-        Spider.StopAnimation();
+        ArachnophobiaObj.transform.localPosition = new Vector3(newV.x, SpiderObj.transform.localPosition.y, newV.z);
+        if (!_arachnophobiaMode)
+            Spider.StopAnimation();
     }
 
     private IEnumerator FlashSequence()
@@ -354,22 +407,28 @@ public class SimonsSpiderScript : MonoBehaviour
     {
         foreach (var p in SpiderParts)
             p.GetComponent<MeshRenderer>().material.color = _colors[c];
+        ArachnophobiaObj.GetComponent<MeshRenderer>().material.color = _colors[c];
         SpiderLight.enabled = true;
         SpiderLight.color = _colors[c];
+        ArachnophobiaLight.enabled = true;
+        ArachnophobiaLight.color = _colors[c];
         if (stay)
             yield break;
         yield return new WaitForSeconds(0.6f);
         foreach (var p in SpiderParts)
             p.GetComponent<MeshRenderer>().material.color = _colors[9];
+        ArachnophobiaObj.GetComponent<MeshRenderer>().material.color = _colors[9];
         SpiderLight.enabled = false;
         SpiderLight.color = _colors[9];
+        ArachnophobiaLight.enabled = false;
+        ArachnophobiaLight.color = _colors[9];
         yield return new WaitForSeconds(0.4f);
     }
 
     private void PlaySpiderHissSound()
     {
         if (_playSounds)
-            Audio.PlaySoundAtTransform("sp" + Rnd.Range(0, 4), SpiderObj.transform);
+            Audio.PlaySoundAtTransform((!_arachnophobiaMode ? "sp" : "ar") + Rnd.Range(0, 4), SpiderObj.transform);
     }
 
     private void PlaySpiderWalkSound()
